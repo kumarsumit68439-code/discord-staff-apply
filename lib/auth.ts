@@ -4,24 +4,44 @@ import DiscordProvider from 'next-auth/providers/discord';
 export const authOptions: NextAuthOptions = {
   providers: [
     DiscordProvider({
-      clientId: process.env.DISCORD_CLIENT_ID!,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+      clientId: process.env.DISCORD_CLIENT_ID as string,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET as string,
       authorization: {
+        url: 'https://discord.com/api/oauth2/authorize',
         params: {
-          scope: 'identify email guilds',
+          scope: 'identify email',
         },
+      },
+      token: 'https://discord.com/api/oauth2/token',
+      userinfo: 'https://discord.com/api/users/@me',
+      profile(profile) {
+        return {
+          id: profile.id,
+          name: profile.username,
+          email: profile.email,
+          image: profile.avatar
+            ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png`
+            : null,
+        };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, account, profile }) {
       if (account && profile) {
-        const discordProfile = profile as any;
-        token.discordId = discordProfile.id;
-        token.discordUsername = discordProfile.username;
-        token.discordAvatar = discordProfile.image || discordProfile.avatar
-          ? `https://cdn.discordapp.com/avatars/${discordProfile.id}/${discordProfile.avatar}.png`
-          : null;
+        const p = profile as {
+          id?: string;
+          username?: string;
+          avatar?: string | null;
+          image?: string | null;
+        };
+        token.discordId = p.id;
+        token.discordUsername = p.username || (profile as any).name;
+        token.discordAvatar =
+          p.image ||
+          (p.avatar
+            ? `https://cdn.discordapp.com/avatars/${p.id}/${p.avatar}.png`
+            : null);
       }
       return token;
     },
@@ -36,6 +56,8 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/',
+    error: '/',
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
 };
