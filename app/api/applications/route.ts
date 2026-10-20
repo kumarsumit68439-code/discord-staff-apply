@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getSessionFromRequest } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const user = await getSessionFromRequest(req);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const adminIds = (process.env.ADMIN_DISCORD_IDS || '').split(',').map((id) => id.trim());
-  const userId = (session.user as any).discordId;
-  const isAdmin = adminIds.includes(userId);
+  const isAdmin = adminIds.includes(user.discordId);
 
   if (isAdmin) {
     const { data, error } = await supabase
@@ -28,7 +26,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from('applications')
     .select('*')
-    .eq('discord_id', userId)
+    .eq('discord_id', user.discordId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -38,8 +36,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const user = await getSessionFromRequest(req);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -47,10 +45,11 @@ export async function POST(req: NextRequest) {
   const { position, experience, why_join, age, timezone, extra } = body;
 
   if (!position || !experience || !why_join) {
-    return NextResponse.json({ error: 'Position, experience and why_join are required' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Position, experience and why_join are required' },
+      { status: 400 }
+    );
   }
-
-  const user = session.user as any;
 
   const { data: existing } = await supabase
     .from('applications')
@@ -61,15 +60,18 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (existing) {
-    return NextResponse.json({ error: 'You already have a pending application for this position' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'You already have a pending application for this position' },
+      { status: 400 }
+    );
   }
 
   const { data, error } = await supabase
     .from('applications')
     .insert({
       discord_id: user.discordId,
-      discord_username: user.discordUsername || user.name,
-      discord_avatar: user.discordAvatar || user.image,
+      discord_username: user.discordUsername,
+      discord_avatar: user.discordAvatar,
       position,
       experience,
       why_join,
@@ -91,17 +93,23 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          embeds: [{
-            title: 'New Staff Application',
-            color: 0x5865f2,
-            fields: [
-              { name: 'User', value: `${user.discordUsername} (${user.discordId})`, inline: true },
-              { name: 'Position', value: position, inline: true },
-              { name: 'Experience', value: experience.slice(0, 500) },
-              { name: 'Why Join', value: why_join.slice(0, 500) },
-            ],
-            timestamp: new Date().toISOString(),
-          }],
+          embeds: [
+            {
+              title: 'New Staff Application',
+              color: 0x5865f2,
+              fields: [
+                {
+                  name: 'User',
+                  value: `${user.discordUsername} (${user.discordId})`,
+                  inline: true,
+                },
+                { name: 'Position', value: position, inline: true },
+                { name: 'Experience', value: experience.slice(0, 500) },
+                { name: 'Why Join', value: why_join.slice(0, 500) },
+              ],
+              timestamp: new Date().toISOString(),
+            },
+          ],
         }),
       });
     } catch (e) {
