@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest } from '@/lib/auth';
+import { getSessionFromRequest, isAdmin } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 async function assignDiscordRole(discordUserId: string, roleId: string) {
@@ -30,12 +30,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const user = await getSessionFromRequest(req);
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const adminIds = (process.env.ADMIN_DISCORD_IDS || '').split(',').map((id) => id.trim());
-  if (!adminIds.includes(user.discordId)) {
+  if (!user || !(await isAdmin(user.discordId))) {
     return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 });
   }
 
