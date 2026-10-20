@@ -39,6 +39,7 @@ function AuthErrorBanner() {
     config: 'Server missing DISCORD_CLIENT_ID or SECRET.',
     missing_code: 'Discord did not return a code. Try again.',
     callback_failed: 'Login callback failed. Try again.',
+    banned: 'You are banned from this website. Contact the server owner.',
   };
 
   return (
