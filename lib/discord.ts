@@ -1,11 +1,31 @@
 const API = 'https://discord.com/api/v10';
 
 export function getBotConfig() {
-  const token = process.env.DISCORD_BOT_TOKEN?.trim();
-  const guildId = process.env.DISCORD_GUILD_ID?.trim();
-  if (!token || !guildId) {
-    return { ok: false as const, error: 'DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set' };
+  const token = (process.env.DISCORD_BOT_TOKEN || '').trim();
+  const guildId = (process.env.DISCORD_GUILD_ID || '').trim();
+
+  if (!token && !guildId) {
+    return {
+      ok: false as const,
+      error:
+        'DISCORD_BOT_TOKEN and DISCORD_GUILD_ID both missing. Add them in Vercel → Settings → Environment Variables, then Redeploy.',
+    };
   }
+  if (!token) {
+    return {
+      ok: false as const,
+      error:
+        'DISCORD_BOT_TOKEN not set. Vercel → Environment Variables me Bot Token add karo, phir Redeploy.',
+    };
+  }
+  if (!guildId) {
+    return {
+      ok: false as const,
+      error:
+        'DISCORD_GUILD_ID not set. Vercel → Environment Variables me Server ID add karo, phir Redeploy.',
+    };
+  }
+
   return { ok: true as const, token, guildId };
 }
 
@@ -43,7 +63,6 @@ export async function fetchGuildMembers(): Promise<
   const members: GuildMember[] = [];
   let after = '0';
 
-  // Paginate up to ~5000 members
   for (let i = 0; i < 5; i++) {
     const res = await fetch(
       `${API}/guilds/${cfg.guildId}/members?limit=1000&after=${after}`,
@@ -56,7 +75,14 @@ export async function fetchGuildMembers(): Promise<
         return {
           ok: false,
           error:
-            'Bot cannot list members. Enable Server Members Intent + invite bot with View Members permission.',
+            'Bot cannot list members. Enable Server Members Intent + invite bot with View Members / Manage Roles.',
+        };
+      }
+      if (res.status === 404) {
+        return {
+          ok: false,
+          error:
+            'Guild not found. DISCORD_GUILD_ID galat hai ya bot us server me nahi hai.',
         };
       }
       return { ok: false, error: `Discord API ${res.status}: ${text}` };
