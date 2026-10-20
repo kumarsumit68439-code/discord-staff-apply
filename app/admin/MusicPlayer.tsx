@@ -9,48 +9,36 @@ declare global {
   }
 }
 
-const PRESETS = [
-  { id: 'jfKfPfyJRdk', title: 'Lofi Girl — beats' },
-  { id: '5qap5aO4i9A', title: 'Lofi Hip Hop Radio' },
-  { id: 'DWcJFNfaw9c', title: 'Chill Vibes' },
-  { id: '7NOSDKb0HlU', title: 'Coding Music' },
-];
-
-function extractVideoId(input: string): string | null {
-  const s = input.trim();
-  if (/^[\w-]{11}$/.test(s)) return s;
-  const m = s.match(
-    /(?:youtu\.be\/|v=|\/embed\/|\/shorts\/)([\w-]{11})/
-  );
-  return m ? m[1] : null;
-}
+type SearchItem = {
+  videoId: string;
+  title: string;
+  channel: string;
+  thumb: string | null;
+};
 
 export function MusicPlayer() {
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
   const [title, setTitle] = useState('YouTube Music');
-  const [videoId, setVideoId] = useState(PRESETS[0].id);
-  const [urlInput, setUrlInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const playerRef = useRef<any>(null);
   const containerId = 'yt-admin-player';
+  const apiLoaded = useRef(false);
 
-  // Load YouTube IFrame API once
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const initPlayer = (id: string) => {
+    const create = () => {
       if (!window.YT?.Player) return;
-      if (playerRef.current) {
-        try {
-          playerRef.current.destroy();
-        } catch {}
-        playerRef.current = null;
-      }
+      if (playerRef.current) return;
       playerRef.current = new window.YT.Player(containerId, {
         height: '1',
         width: '1',
-        videoId: id,
+        videoId: 'jfKfPfyJRdk',
         playerVars: {
           autoplay: 0,
           controls: 0,
@@ -63,11 +51,9 @@ export function MusicPlayer() {
         events: {
           onReady: () => setReady(true),
           onStateChange: (e: any) => {
-            // 1 = playing, 2 = paused, 0 = ended
             if (e.data === 1) setPlaying(true);
             if (e.data === 2) setPlaying(false);
             if (e.data === 0) {
-              // loop current video
               try {
                 playerRef.current?.seekTo(0);
                 playerRef.current?.playVideo();
@@ -79,51 +65,73 @@ export function MusicPlayer() {
     };
 
     if (window.YT?.Player) {
-      initPlayer(videoId);
+      create();
       return;
     }
 
-    const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      prev?.();
-      initPlayer(videoId);
-    };
-
-    if (!document.getElementById('yt-iframe-api')) {
-      const tag = document.createElement('script');
-      tag.id = 'yt-iframe-api';
-      tag.src = 'https://www.youtube.com/iframe_api';
-      document.head.appendChild(tag);
+    if (!apiLoaded.current) {
+      apiLoaded.current = true;
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        prev?.();
+        create();
+      };
+      if (!document.getElementById('yt-iframe-api')) {
+        const tag = document.createElement('script');
+        tag.id = 'yt-iframe-api';
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(tag);
+      }
     }
 
     return () => {
-      // keep player alive while component mounted — only destroy on unmount
       try {
         playerRef.current?.destroy();
       } catch {}
       playerRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadVideo = useCallback((id: string, name?: string) => {
-    setVideoId(id);
-    if (name) setTitle(name);
-    else setTitle('YouTube track');
-    setReady(false);
-    if (playerRef.current?.loadVideoById) {
-      playerRef.current.loadVideoById(id);
-      setReady(true);
+  const playVideo = useCallback((videoId: string, name: string) => {
+    setTitle(name);
+    setError(null);
+    const p = playerRef.current;
+    if (p?.loadVideoById) {
+      p.loadVideoById(videoId);
       setPlaying(true);
+      setReady(true);
+    } else {
+      setError('Player loading... 2 sec baad phir try karo');
     }
   }, []);
+
+  async function doSearch(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!query.trim()) return;
+    setSearching(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query.trim())}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Search failed');
+        setResults([]);
+      } else {
+        setResults(data.items || []);
+        if (!(data.items || []).length) setError('Koi result nahi mila');
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setSearching(false);
+    }
+  }
 
   function togglePlay() {
     const p = playerRef.current;
     if (!p) return;
     try {
-      const state = p.getPlayerState?.();
-      if (state === 1) {
+      if (p.getPlayerState?.() === 1) {
         p.pauseVideo();
         setPlaying(false);
       } else {
@@ -135,23 +143,8 @@ export function MusicPlayer() {
     }
   }
 
-  function playUrl() {
-    const id = extractVideoId(urlInput);
-    if (!id) {
-      alert('Valid YouTube link ya 11-char video ID daalo');
-      return;
-    }
-    loadVideo(id, 'Custom YouTube');
-    setUrlInput('');
-  }
-
-  function playPreset(p: (typeof PRESETS)[0]) {
-    loadVideo(p.id, p.title);
-  }
-
   return (
     <>
-      {/* Hidden YouTube player — stays in DOM so music keeps playing when panel closed */}
       <div
         className="fixed opacity-0 pointer-events-none"
         style={{ width: 1, height: 1, bottom: 0, right: 0, overflow: 'hidden' }}
@@ -162,7 +155,7 @@ export function MusicPlayer() {
 
       <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-3">
         {open && (
-          <div className="glass-card rounded-2xl p-4 w-72 shadow-glow animate-in border border-white/10">
+          <div className="glass-card rounded-2xl p-4 w-80 max-h-[70vh] overflow-y-auto shadow-glow animate-in border border-white/10">
             <div className="flex items-center gap-3 mb-3">
               <div
                 className={`w-11 h-11 rounded-xl bg-gradient-to-br from-red-500 to-discord-blurple flex items-center justify-center flex-shrink-0 ${
@@ -176,45 +169,55 @@ export function MusicPlayer() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-white truncate">{title}</p>
                 <p className="text-[10px] text-gray-500">
-                  {playing ? '▶ Playing (panel band bhi chalegi)' : ready ? 'Ready' : 'Loading YouTube...'}
+                  {playing ? '▶ Playing' : ready ? 'YouTube v3 API' : 'Loading player...'}
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-2 mb-3">
+            <form onSubmit={doSearch} className="flex gap-2 mb-3">
               <input
                 type="text"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && playUrl()}
-                placeholder="YouTube link / video ID"
-                className="flex-1 input-premium rounded-lg px-2.5 py-1.5 text-xs text-white"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search song / artist..."
+                className="flex-1 input-premium rounded-lg px-2.5 py-2 text-xs text-white"
               />
               <button
-                onClick={playUrl}
-                className="px-2.5 py-1.5 rounded-lg bg-red-500/80 hover:bg-red-500 text-white text-xs font-medium"
+                type="submit"
+                disabled={searching || !query.trim()}
+                className="px-3 py-2 rounded-lg bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium disabled:opacity-50"
               >
-                Play
+                {searching ? '...' : 'Search'}
               </button>
-            </div>
+            </form>
 
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => playPreset(p)}
-                  className={`text-[10px] px-2 py-1 rounded-lg border transition ${
-                    videoId === p.id
-                      ? 'border-discord-blurple bg-discord-blurple/20 text-white'
-                      : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-                  }`}
-                >
-                  {p.title.split('—')[0].trim()}
-                </button>
-              ))}
-            </div>
+            {error && (
+              <div className="mb-2 p-2 rounded-lg bg-red-500/10 text-red-400 text-[11px]">{error}</div>
+            )}
 
-            <div className="flex items-center justify-center gap-4">
+            {results.length > 0 && (
+              <div className="space-y-1.5 mb-3 max-h-48 overflow-y-auto">
+                {results.map((item) => (
+                  <button
+                    key={item.videoId}
+                    onClick={() => playVideo(item.videoId, item.title)}
+                    className="w-full flex items-center gap-2 p-2 rounded-xl hover:bg-white/5 text-left transition border border-transparent hover:border-white/10"
+                  >
+                    {item.thumb ? (
+                      <img src={item.thumb} alt="" className="w-12 h-9 rounded object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-12 h-9 rounded bg-white/10 flex-shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-white truncate leading-tight">{item.title}</p>
+                      <p className="text-[9px] text-gray-500 truncate">{item.channel}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-center">
               <button
                 onClick={togglePlay}
                 disabled={!ready}
@@ -231,9 +234,8 @@ export function MusicPlayer() {
                 )}
               </button>
             </div>
-
             <p className="text-[9px] text-gray-600 text-center mt-2">
-              Panel ✕ karne pe bhi song chalta rahega. Tab band = stop.
+              Panel band = song chalta. Tab close = stop.
             </p>
           </div>
         )}
@@ -249,7 +251,7 @@ export function MusicPlayer() {
         >
           {playing ? (
             <span className="flex gap-0.5 items-end h-4">
-              <span className="w-1 bg-white rounded-full animate-bounce" style={{ height: '60%', animationDelay: '0ms' }} />
+              <span className="w-1 bg-white rounded-full animate-bounce" style={{ height: '60%' }} />
               <span className="w-1 bg-white rounded-full animate-bounce" style={{ height: '100%', animationDelay: '150ms' }} />
               <span className="w-1 bg-white rounded-full animate-bounce" style={{ height: '40%', animationDelay: '300ms' }} />
             </span>
