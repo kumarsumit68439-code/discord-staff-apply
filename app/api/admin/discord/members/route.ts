@@ -17,9 +17,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: membersRes.error }, { status: 500 });
   }
 
+  const roles = rolesRes.ok ? rolesRes.roles : [];
+  let rolesError = rolesRes.ok ? null : rolesRes.error;
+
+  if (rolesRes.ok && roles.length === 0) {
+    rolesError =
+      'Server me koi custom role nahi mili (sirf @everyone). Discord me Admin/Staff/Helper roles banao, phir Reload.';
+  }
+
   return NextResponse.json({
     members: membersRes.members,
-    roles: rolesRes.ok ? rolesRes.roles : [],
-    rolesError: rolesRes.ok ? null : rolesRes.error,
+    roles,
+    rolesError,
   });
 }
