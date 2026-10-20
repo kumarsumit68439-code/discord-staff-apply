@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { RolePanel } from './RolePanel';
 
 type Application = {
   id: string;
@@ -84,6 +85,8 @@ export default function AdminPage() {
   const [selectedMember, setSelectedMember] = useState<GuildMember | null>(null);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [manualRoleId, setManualRoleId] = useState('');
+  const [rolesError, setRolesError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -135,10 +138,14 @@ export default function AdminPage() {
         setMembersError(data.error || 'Failed to load members');
         setMembers([]);
         setRoles([]);
+        setRolesError(null);
       } else {
         setMembers(data.members || []);
         setRoles(data.roles || []);
-        if (data.rolesError) setMembersError(data.rolesError);
+        setRolesError(data.rolesError || null);
+        if (data.rolesError && !(data.roles || []).length) {
+          setMembersError(data.rolesError);
+        }
       }
     } catch {
       setMembersError('Network error loading Discord members');
@@ -221,14 +228,13 @@ export default function AdminPage() {
         setMsg(data.error || 'Role update failed');
       } else {
         setMsg(data.message);
-        // Update local state
         setMembers((prev) =>
           prev.map((m) => {
             if (m.id !== userId) return m;
-            const roles = hasRole
+            const nextRoles = hasRole
               ? m.roles.filter((r) => r !== roleId)
               : [...m.roles, roleId];
-            return { ...m, roles };
+            return { ...m, roles: nextRoles };
           })
         );
         if (selectedMember?.id === userId) {
@@ -262,8 +268,7 @@ export default function AdminPage() {
     );
   });
 
-  // Assignable roles: not managed by bots/integrations
-  const assignableRoles = roles.filter((r) => !r.managed);
+  const assignableRoles = roles.filter((r) => r.name !== '@everyone');
 
   if (loading) {
     return (
@@ -288,7 +293,6 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen bg-discord-darker flex flex-col items-center justify-center gap-4">
         <p className="text-xl text-white font-bold">Access Denied</p>
-        <p className="text-gray-400">Admin panel sirf authorized admins ke liye hai.</p>
         <Link href="/" className="text-discord-blurple hover:underline">
           Go back
         </Link>
@@ -306,9 +310,7 @@ export default function AdminPage() {
             </Link>
             <h1 className="text-xl font-bold text-white">Admin Panel</h1>
             {isOwner && (
-              <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
-                Owner
-              </span>
+              <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">Owner</span>
             )}
           </div>
           <button
@@ -349,16 +351,14 @@ export default function AdminPage() {
         </div>
 
         {msg && (
-          <div className="mb-4 p-3 rounded-lg bg-discord-blurple/20 text-discord-blurple text-sm">
-            {msg}
-          </div>
+          <div className="mb-4 p-3 rounded-lg bg-discord-blurple/20 text-discord-blurple text-sm">{msg}</div>
         )}
 
         {tab === 'members' && (
           <div className="space-y-4">
             <div className="bg-discord-card rounded-2xl p-4 border border-white/5">
               <p className="text-sm text-gray-400 mb-3">
-                Discord server ke members. Click karke <strong className="text-white">Admin / Staff / Helper</strong> roles de sakte ho — role seedha Discord server pe lagta hai.
+                Discord server members. Click user → Give Role (role Discord server pe lagta hai).
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
@@ -389,9 +389,7 @@ export default function AdminPage() {
             ) : (
               <div className="grid lg:grid-cols-5 gap-4">
                 <div className="lg:col-span-2 space-y-2 max-h-[70vh] overflow-y-auto">
-                  <p className="text-xs text-gray-500 mb-2">
-                    {filteredMembers.length} members
-                  </p>
+                  <p className="text-xs text-gray-500 mb-2">{filteredMembers.length} members</p>
                   {filteredMembers.map((m) => (
                     <button
                       key={m.id}
@@ -415,9 +413,6 @@ export default function AdminPage() {
                       </div>
                     </button>
                   ))}
-                  {filteredMembers.length === 0 && !membersLoading && (
-                    <p className="text-gray-500 text-sm py-6 text-center">No members found.</p>
-                  )}
                 </div>
 
                 <div className="lg:col-span-3">
@@ -425,11 +420,7 @@ export default function AdminPage() {
                     <div className="bg-discord-card rounded-2xl p-5 border border-white/5 sticky top-24">
                       <div className="flex items-center gap-4 mb-5">
                         {selectedMember.avatar ? (
-                          <img
-                            src={selectedMember.avatar}
-                            alt=""
-                            className="w-16 h-16 rounded-full"
-                          />
+                          <img src={selectedMember.avatar} alt="" className="w-16 h-16 rounded-full" />
                         ) : (
                           <div className="w-16 h-16 rounded-full bg-discord-dark flex items-center justify-center text-2xl text-gray-400">
                             {selectedMember.displayName.slice(0, 1).toUpperCase()}
@@ -445,7 +436,7 @@ export default function AdminPage() {
                       <p className="text-sm text-gray-400 mb-2">Current roles</p>
                       <div className="flex flex-wrap gap-2 mb-5">
                         {selectedMember.roles.length === 0 ? (
-                          <span className="text-xs text-gray-500">No roles</span>
+                          <span className="text-xs text-gray-500">No roles (only @everyone)</span>
                         ) : (
                           selectedMember.roles.map((rid) => {
                             const role = roles.find((r) => r.id === rid);
@@ -463,12 +454,15 @@ export default function AdminPage() {
                       </div>
 
                       <p className="text-sm text-white font-medium mb-3">Assign / Remove Discord Role</p>
+                      {rolesError && (
+                        <div className="mb-3 p-2 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs">{rolesError}</div>
+                      )}
                       {assignableRoles.length === 0 ? (
-                        <p className="text-sm text-gray-500">
-                          No roles loaded. Check bot setup (DISCORD_BOT_TOKEN + GUILD_ID).
+                        <p className="text-sm text-gray-400 mb-3">
+                          Server me custom role nahi mili. Discord: <span className="text-white">Server Settings → Roles → Create</span> (Admin, Staff, Helper). Ya Role ID se do.
                         </p>
                       ) : (
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                        <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
                           {assignableRoles.map((role) => {
                             const has = selectedMember.roles.includes(role.id);
                             return (
@@ -476,19 +470,20 @@ export default function AdminPage() {
                                 key={role.id}
                                 className="flex items-center justify-between gap-3 p-3 rounded-xl bg-discord-dark border border-white/5"
                               >
-                                <span
-                                  className="text-sm font-medium"
-                                  style={{ color: roleColor(role.color) }}
-                                >
-                                  {role.name}
-                                </span>
+                                <div>
+                                  <span className="text-sm font-medium" style={{ color: roleColor(role.color) }}>
+                                    {role.name}
+                                  </span>
+                                  {role.managed && (
+                                    <span className="ml-2 text-[10px] text-gray-500">(managed)</span>
+                                  )}
+                                  <p className="text-[10px] text-gray-600 font-mono">{role.id}</p>
+                                </div>
                                 <button
                                   onClick={() => toggleRole(selectedMember.id, role.id, has)}
-                                  disabled={actionLoading === selectedMember.id + role.id}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 ${
-                                    has
-                                      ? 'bg-red-500/20 text-red-400'
-                                      : 'bg-green-500/20 text-discord-green'
+                                  disabled={role.managed || actionLoading === selectedMember.id + role.id}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40 ${
+                                    has ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-discord-green'
                                   }`}
                                 >
                                   {actionLoading === selectedMember.id + role.id
@@ -502,10 +497,43 @@ export default function AdminPage() {
                           })}
                         </div>
                       )}
+
+                      <div className="pt-3 border-t border-white/5 space-y-2">
+                        <p className="text-xs text-gray-500">
+                          Manual Role ID (Developer Mode ON → Roles list me role pe right-click → Copy Role ID)
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Role ID"
+                            value={manualRoleId}
+                            onChange={(e) => setManualRoleId(e.target.value.trim())}
+                            className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
+                          />
+                          <button
+                            onClick={() =>
+                              manualRoleId && toggleRole(selectedMember.id, manualRoleId, false)
+                            }
+                            disabled={!manualRoleId || !!actionLoading}
+                            className="px-3 py-2 rounded-lg bg-green-500/20 text-discord-green text-xs font-medium disabled:opacity-50"
+                          >
+                            Give
+                          </button>
+                          <button
+                            onClick={() =>
+                              manualRoleId && toggleRole(selectedMember.id, manualRoleId, true)
+                            }
+                            disabled={!manualRoleId || !!actionLoading}
+                            className="px-3 py-2 rounded-lg bg-red-500/20 text-red-400 text-xs font-medium disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="bg-discord-card rounded-2xl p-10 border border-white/5 text-center text-gray-500">
-                      Left se kisi member pe click karo → role assign option aayega.
+                      Left se member click karo → role assign.
                     </div>
                   )}
                 </div>
@@ -535,32 +563,25 @@ export default function AdminPage() {
                   color: 'text-discord-red',
                 },
               ].map((s) => (
-                <div
-                  key={s.label}
-                  className="bg-discord-card rounded-xl p-4 border border-white/5 text-center"
-                >
+                <div key={s.label} className="bg-discord-card rounded-xl p-4 border border-white/5 text-center">
                   <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
                   <p className="text-xs text-gray-500 mt-1">{s.label}</p>
                 </div>
               ))}
             </div>
-
             <div className="flex gap-2 mb-6 flex-wrap">
               {(['all', 'pending', 'approved', 'rejected'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize ${
-                    filter === f
-                      ? 'bg-discord-blurple text-white'
-                      : 'bg-discord-card text-gray-400'
+                    filter === f ? 'bg-discord-blurple text-white' : 'bg-discord-card text-gray-400'
                   }`}
                 >
                   {f}
                 </button>
               ))}
             </div>
-
             <div className="space-y-4">
               {filtered.length === 0 ? (
                 <p className="text-center text-gray-500 py-12">No applications found.</p>
@@ -572,58 +593,24 @@ export default function AdminPage() {
                         <p className="font-semibold text-white">{app.discord_username}</p>
                         <p className="text-xs text-gray-500 font-mono">{app.discord_id}</p>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2.5 py-1 rounded-full text-xs bg-discord-blurple/20 text-discord-blurple">
-                          {app.position}
-                        </span>
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-xs capitalize ${
-                            app.status === 'approved'
-                              ? 'text-discord-green'
-                              : app.status === 'rejected'
-                                ? 'text-discord-red'
-                                : 'text-discord-yellow'
-                          }`}
-                        >
-                          {app.status}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
-                      <div>
-                        <p className="text-gray-500 text-xs mb-1">Experience</p>
-                        <p className="text-gray-300 whitespace-pre-wrap">{app.experience}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-xs mb-1">Why Join</p>
-                        <p className="text-gray-300 whitespace-pre-wrap">{app.why_join}</p>
-                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-xs bg-discord-blurple/20 text-discord-blurple">
+                        {app.position}
+                      </span>
                     </div>
                     {app.status === 'pending' && (
-                      <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-white/5">
-                        <input
-                          type="text"
-                          placeholder="Admin note (optional)"
-                          value={note[app.id] || ''}
-                          onChange={(e) => setNote({ ...note, [app.id]: e.target.value })}
-                          className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => updateStatus(app.id, 'approved')}
-                            disabled={actionLoading === app.id}
-                            className="px-4 py-2 rounded-lg bg-green-500/20 text-discord-green text-sm font-medium disabled:opacity-50"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => updateStatus(app.id, 'rejected')}
-                            disabled={actionLoading === app.id}
-                            className="px-4 py-2 rounded-lg bg-red-500/20 text-discord-red text-sm font-medium disabled:opacity-50"
-                          >
-                            Reject
-                          </button>
-                        </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => updateStatus(app.id, 'approved')}
+                          className="px-4 py-2 rounded-lg bg-green-500/20 text-discord-green text-sm"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => updateStatus(app.id, 'rejected')}
+                          className="px-4 py-2 rounded-lg bg-red-500/20 text-discord-red text-sm"
+                        >
+                          Reject
+                        </button>
                       </div>
                     )}
                   </div>
@@ -635,16 +622,9 @@ export default function AdminPage() {
 
         {tab === 'admins' && (
           <div className="space-y-6">
-            {isOwner ? (
+            {isOwner && (
               <div className="bg-discord-card rounded-2xl p-5 border border-white/5">
-                <h3 className="text-white font-semibold mb-3">Add Site Admin (Owner only)</h3>
-                <p className="text-xs text-gray-500 mb-3">
-                  Ye website admin hai (panel access), Discord role nahi. Discord role ke liye{' '}
-                  <button className="text-discord-blurple underline" onClick={() => setTab('members')}>
-                    Server Members
-                  </button>{' '}
-                  use karo.
-                </p>
+                <h3 className="text-white font-semibold mb-3">Add Site Admin</h3>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <input
                     type="text"
@@ -653,115 +633,76 @@ export default function AdminPage() {
                     onChange={(e) => setNewAdminId(e.target.value.trim())}
                     className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
                   />
-                  <input
-                    type="text"
-                    placeholder="Username (optional)"
-                    value={newAdminName}
-                    onChange={(e) => setNewAdminName(e.target.value)}
-                    className="sm:w-40 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-                  />
                   <button
                     onClick={() => manageUser('add_admin', newAdminId, newAdminName)}
-                    disabled={!newAdminId || !!actionLoading}
-                    className="px-4 py-2 rounded-lg bg-discord-blurple text-white text-sm font-medium disabled:opacity-50"
+                    disabled={!newAdminId}
+                    className="px-4 py-2 rounded-lg bg-discord-blurple text-white text-sm disabled:opacity-50"
                   >
                     Add Admin
                   </button>
                 </div>
               </div>
-            ) : (
-              <p className="text-gray-500 text-sm">Only Owner can add/remove site admins.</p>
             )}
-            <div className="space-y-3">
-              {admins.map((a) => (
-                <div
-                  key={a.discord_id}
-                  className="bg-discord-card rounded-xl p-4 border border-white/5 flex items-center justify-between gap-3"
-                >
-                  <div>
-                    <p className="text-white font-medium">
-                      {a.discord_username || 'Unknown'}
-                      {a.discord_id === ownerId && (
-                        <span className="ml-2 text-xs text-yellow-400">Owner</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-gray-500 font-mono">{a.discord_id}</p>
-                  </div>
-                  {isOwner && a.discord_id !== ownerId && (
-                    <button
-                      onClick={() => manageUser('remove_admin', a.discord_id)}
-                      className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-sm"
-                    >
-                      Remove
-                    </button>
-                  )}
+            {admins.map((a) => (
+              <div
+                key={a.discord_id}
+                className="bg-discord-card rounded-xl p-4 border border-white/5 flex justify-between"
+              >
+                <div>
+                  <p className="text-white">{a.discord_username || 'Unknown'}</p>
+                  <p className="text-xs text-gray-500 font-mono">{a.discord_id}</p>
                 </div>
-              ))}
-            </div>
+                {isOwner && a.discord_id !== ownerId && (
+                  <button
+                    onClick={() => manageUser('remove_admin', a.discord_id)}
+                    className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-sm"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
         {tab === 'bans' && (
           <div className="space-y-6">
             <div className="bg-discord-card rounded-2xl p-5 border border-white/5">
-              <h3 className="text-white font-semibold mb-3">Ban User from Website</h3>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="text"
-                    placeholder="Discord User ID"
-                    value={banId}
-                    onChange={(e) => setBanId(e.target.value.trim())}
-                    className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Username (optional)"
-                    value={banName}
-                    onChange={(e) => setBanName(e.target.value)}
-                    className="sm:w-40 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-                  />
-                </div>
+              <h3 className="text-white font-semibold mb-3">Ban from Website</h3>
+              <div className="flex gap-3">
                 <input
                   type="text"
-                  placeholder="Reason (optional)"
-                  value={banReason}
-                  onChange={(e) => setBanReason(e.target.value)}
-                  className="w-full bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="Discord User ID"
+                  value={banId}
+                  onChange={(e) => setBanId(e.target.value.trim())}
+                  className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
                 />
                 <button
                   onClick={() => manageUser('ban', banId, banName, banReason)}
-                  disabled={!banId || !!actionLoading}
-                  className="self-start px-4 py-2 rounded-lg bg-red-500/20 text-red-400 text-sm font-medium disabled:opacity-50"
+                  disabled={!banId}
+                  className="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 text-sm disabled:opacity-50"
                 >
-                  Ban User
+                  Ban
                 </button>
               </div>
             </div>
-            <div className="space-y-3">
-              {bans.length === 0 ? (
-                <p className="text-gray-500 text-sm">No banned users.</p>
-              ) : (
-                bans.map((b) => (
-                  <div
-                    key={b.discord_id}
-                    className="bg-discord-card rounded-xl p-4 border border-white/5 flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <p className="text-white font-medium">{b.discord_username || 'Unknown'}</p>
-                      <p className="text-xs text-gray-500 font-mono">{b.discord_id}</p>
-                      {b.reason && <p className="text-xs text-gray-400 mt-1">Reason: {b.reason}</p>}
-                    </div>
-                    <button
-                      onClick={() => manageUser('unban', b.discord_id)}
-                      className="px-3 py-1.5 rounded-lg bg-green-500/20 text-discord-green text-sm"
-                    >
-                      Unban
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
+            {bans.map((b) => (
+              <div
+                key={b.discord_id}
+                className="bg-discord-card rounded-xl p-4 border border-white/5 flex justify-between"
+              >
+                <div>
+                  <p className="text-white">{b.discord_username || 'Unknown'}</p>
+                  <p className="text-xs text-gray-500 font-mono">{b.discord_id}</p>
+                </div>
+                <button
+                  onClick={() => manageUser('unban', b.discord_id)}
+                  className="px-3 py-1.5 rounded-lg bg-green-500/20 text-discord-green text-sm"
+                >
+                  Unban
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </main>
