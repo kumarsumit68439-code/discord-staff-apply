@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getSessionFromRequest } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 async function assignDiscordRole(discordUserId: string, roleId: string) {
@@ -30,14 +29,13 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const user = await getSessionFromRequest(req);
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const adminIds = (process.env.ADMIN_DISCORD_IDS || '').split(',').map((id) => id.trim());
-  const userId = (session.user as any).discordId;
-  if (!adminIds.includes(userId)) {
+  if (!adminIds.includes(user.discordId)) {
     return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 });
   }
 
@@ -86,18 +84,31 @@ export async function PATCH(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          embeds: [{
-            title: status === 'approved' ? 'Application Approved' : 'Application Rejected',
-            color: status === 'approved' ? 0x57f287 : 0xed4245,
-            fields: [
-              { name: 'User', value: `${app.discord_username} (${app.discord_id})`, inline: true },
-              { name: 'Position', value: app.position, inline: true },
-              { name: 'Status', value: status, inline: true },
-              ...(admin_note ? [{ name: 'Admin Note', value: admin_note }] : []),
-              ...(roleResult ? [{ name: 'Role Assign', value: roleResult.ok ? 'Success' : `Failed: ${roleResult.error}` }] : []),
-            ],
-            timestamp: new Date().toISOString(),
-          }],
+          embeds: [
+            {
+              title: status === 'approved' ? 'Application Approved' : 'Application Rejected',
+              color: status === 'approved' ? 0x57f287 : 0xed4245,
+              fields: [
+                {
+                  name: 'User',
+                  value: `${app.discord_username} (${app.discord_id})`,
+                  inline: true,
+                },
+                { name: 'Position', value: app.position, inline: true },
+                { name: 'Status', value: status, inline: true },
+                ...(admin_note ? [{ name: 'Admin Note', value: admin_note }] : []),
+                ...(roleResult
+                  ? [
+                      {
+                        name: 'Role Assign',
+                        value: roleResult.ok ? 'Success' : `Failed: ${roleResult.error}`,
+                      },
+                    ]
+                  : []),
+              ],
+              timestamp: new Date().toISOString(),
+            },
+          ],
         }),
       });
     } catch (e) {
