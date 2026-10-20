@@ -1,9 +1,14 @@
 'use client';
 
-import { useSession, signIn, signOut } from 'next-auth/react';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+
+type SessionUser = {
+  discordId: string;
+  discordUsername: string;
+  discordAvatar: string | null;
+};
 
 type Application = {
   id: string;
@@ -13,7 +18,15 @@ type Application = {
   admin_note: string | null;
 };
 
-const POSITIONS = ['Moderator', 'Admin', 'Support Staff', 'Event Manager', 'Content Creator', 'Developer', 'Other'];
+const POSITIONS = [
+  'Moderator',
+  'Admin',
+  'Support Staff',
+  'Event Manager',
+  'Content Creator',
+  'Developer',
+  'Other',
+];
 
 function AuthErrorBanner() {
   const searchParams = useSearchParams();
@@ -21,34 +34,52 @@ function AuthErrorBanner() {
   if (!error) return null;
 
   const messages: Record<string, string> = {
-    OAuthCallback: 'Discord login failed (OAuth callback). Check Client ID/Secret and Redirect URL.',
-    OAuthSignin: 'Could not start Discord login. Check DISCORD_CLIENT_ID.',
-    Configuration: 'Server config error. Check NEXTAUTH_SECRET and NEXTAUTH_URL.',
-    AccessDenied: 'Access denied.',
-    Default: `Login error: ${error}`,
+    token_exchange: 'Discord token exchange failed. Check Client Secret + Redirect URL.',
+    user_fetch: 'Could not fetch Discord profile.',
+    config: 'Server missing DISCORD_CLIENT_ID or SECRET.',
+    missing_code: 'Discord did not return a code. Try again.',
+    callback_failed: 'Login callback failed. Try again.',
   };
 
   return (
     <div className="max-w-4xl mx-auto px-4 pt-4">
       <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-        {messages[error] || messages.Default}
+        {messages[error] || `Login error: ${error}`}
       </div>
     </div>
   );
 }
 
 function HomeContent() {
-  const { data: session, status } = useSession();
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [status, setStatus] = useState<'loading' | 'ready'>('loading');
   const [applications, setApplications] = useState<Application[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [form, setForm] = useState({ position: 'Moderator', experience: '', why_join: '', age: '', timezone: '', extra: '' });
+  const [form, setForm] = useState({
+    position: 'Moderator',
+    experience: '',
+    why_join: '',
+    age: '',
+    timezone: '',
+    extra: '',
+  });
 
   useEffect(() => {
-    if (session) fetchApplications();
-  }, [session]);
+    fetch('/api/auth/session')
+      .then((r) => r.json())
+      .then((data) => {
+        setUser(data.user || null);
+        setStatus('ready');
+      })
+      .catch(() => setStatus('ready'));
+  }, []);
+
+  useEffect(() => {
+    if (user) fetchApplications();
+  }, [user]);
 
   async function fetchApplications() {
     setLoading(true);
@@ -79,7 +110,14 @@ function HomeContent() {
         setMessage({ type: 'error', text: data.error || 'Failed to submit' });
       } else {
         setMessage({ type: 'success', text: 'Application submitted! We will review it soon.' });
-        setForm({ position: 'Moderator', experience: '', why_join: '', age: '', timezone: '', extra: '' });
+        setForm({
+          position: 'Moderator',
+          experience: '',
+          why_join: '',
+          age: '',
+          timezone: '',
+          extra: '',
+        });
         fetchApplications();
       }
     } catch {
@@ -90,7 +128,11 @@ function HomeContent() {
   }
 
   function handleLogin() {
-    signIn('discord', { callbackUrl: '/' });
+    window.location.href = '/api/auth/discord';
+  }
+
+  function handleLogout() {
+    window.location.href = '/api/auth/logout';
   }
 
   return (
@@ -103,31 +145,31 @@ function HomeContent() {
           </div>
           <div className="flex items-center gap-3">
             {isAdmin && (
-              <Link href="/admin" className="px-4 py-2 rounded-lg bg-discord-blurple hover:bg-discord-blurple/80 text-white text-sm font-medium">
+              <Link
+                href="/admin"
+                className="px-4 py-2 rounded-lg bg-discord-blurple hover:bg-discord-blurple/80 text-white text-sm font-medium"
+              >
                 Admin Panel
               </Link>
             )}
-            {session ? (
+            {user ? (
               <div className="flex items-center gap-3">
-                {(session.user as any)?.discordAvatar || session.user?.image ? (
-                  <img
-                    src={(session.user as any)?.discordAvatar || session.user?.image || ''}
-                    alt=""
-                    className="w-8 h-8 rounded-full"
-                  />
+                {user.discordAvatar ? (
+                  <img src={user.discordAvatar} alt="" className="w-8 h-8 rounded-full" />
                 ) : null}
-                <span className="text-sm text-gray-300">
-                  {(session.user as any)?.discordUsername || session.user?.name}
-                </span>
+                <span className="text-sm text-gray-300">{user.discordUsername}</span>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/' })}
+                  onClick={handleLogout}
                   className="px-3 py-2 rounded-lg bg-discord-card text-gray-300 text-sm hover:text-red-400"
                 >
                   Logout
                 </button>
               </div>
             ) : (
-              <button onClick={handleLogin} className="px-4 py-2 rounded-lg bg-discord-blurple text-white font-medium">
+              <button
+                onClick={handleLogin}
+                className="px-4 py-2 rounded-lg bg-discord-blurple text-white font-medium"
+              >
                 Login with Discord
               </button>
             )}
@@ -142,10 +184,12 @@ function HomeContent() {
       <main className="max-w-4xl mx-auto px-4 py-8">
         {status === 'loading' ? (
           <div className="text-center py-20 text-gray-400">Loading session...</div>
-        ) : !session ? (
+        ) : !user ? (
           <div className="text-center py-16">
             <h2 className="text-3xl font-bold text-white mb-3">Become a Staff Member</h2>
-            <p className="text-gray-400 max-w-md mx-auto mb-8">Login with Discord to apply for staff positions.</p>
+            <p className="text-gray-400 max-w-md mx-auto mb-8">
+              Login with Discord to apply for staff positions.
+            </p>
             <button
               onClick={handleLogin}
               className="px-8 py-3 rounded-xl bg-discord-blurple text-white font-semibold text-lg"
@@ -158,7 +202,9 @@ function HomeContent() {
             <div className="lg:col-span-3">
               <div className="bg-discord-card rounded-2xl p-6 border border-white/5">
                 <h2 className="text-xl font-bold text-white mb-1">Apply for Staff</h2>
-                <p className="text-sm text-gray-400 mb-6">Fill the form carefully.</p>
+                <p className="text-sm text-gray-400 mb-6">
+                  Logged in as <span className="text-white">{user.discordUsername}</span> — fill the form.
+                </p>
                 {message && (
                   <div
                     className={`mb-4 p-3 rounded-lg text-sm ${
@@ -297,7 +343,13 @@ function HomeContent() {
 
 export default function HomePage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-discord-darker text-gray-400 flex items-center justify-center">Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-discord-darker text-gray-400 flex items-center justify-center">
+          Loading...
+        </div>
+      }
+    >
       <HomeContent />
     </Suspense>
   );
