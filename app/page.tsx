@@ -203,9 +203,7 @@ function HomeContent() {
             <div className="lg:col-span-3">
               <div className="bg-discord-card rounded-2xl p-6 border border-white/5">
                 <h2 className="text-xl font-bold text-white mb-1">Apply for Staff</h2>
-                <p className="text-sm text-gray-400 mb-6">
-                  Logged in as <span className="text-white">{user.discordUsername}</span> — fill the form.
-                </p>
+                <p className="text-sm text-gray-400 mb-6">Fill the form carefully. Discord details auto-filled from login.</p>
                 {message && (
                   <div
                     className={`mb-4 p-3 rounded-lg text-sm ${
@@ -218,6 +216,26 @@ function HomeContent() {
                   </div>
                 )}
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-300 mb-1.5">Discord Username</label>
+                      <input
+                        type="text"
+                        value={user.discordUsername}
+                        readOnly
+                        className="w-full bg-discord-dark/60 border border-white/10 rounded-lg px-3 py-2.5 text-gray-300 cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-300 mb-1.5">Discord User ID</label>
+                      <input
+                        type="text"
+                        value={user.discordId}
+                        readOnly
+                        className="w-full bg-discord-dark/60 border border-white/10 rounded-lg px-3 py-2.5 text-gray-300 font-mono text-sm cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-sm text-gray-300 mb-1.5">Position *</label>
                     <select
