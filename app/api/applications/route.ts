@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest } from '@/lib/auth';
+import { getSessionFromRequest, isAdmin, isBanned } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
@@ -8,10 +8,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const adminIds = (process.env.ADMIN_DISCORD_IDS || '').split(',').map((id) => id.trim());
-  const isAdmin = adminIds.includes(user.discordId);
+  if (await isBanned(user.discordId)) {
+    return NextResponse.json({ error: 'You are banned' }, { status: 403 });
+  }
 
-  if (isAdmin) {
+  const admin = await isAdmin(user.discordId);
+
+  if (admin) {
     const { data, error } = await supabase
       .from('applications')
       .select('*')
@@ -39,6 +42,10 @@ export async function POST(req: NextRequest) {
   const user = await getSessionFromRequest(req);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (await isBanned(user.discordId)) {
+    return NextResponse.json({ error: 'You are banned from this site' }, { status: 403 });
   }
 
   const body = await req.json();
