@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, getBaseUrl, setSessionCookie } from '@/lib/auth';
+import {
+  createSessionToken,
+  getBaseUrl,
+  setSessionCookie,
+  isBanned,
+} from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   const baseUrl = getBaseUrl();
@@ -24,7 +29,6 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${baseUrl}/api/auth/callback/discord`;
 
   try {
-    // Exchange code for access token
     const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -46,7 +50,6 @@ export async function GET(req: NextRequest) {
     const tokenData = await tokenRes.json();
     const accessToken = tokenData.access_token as string;
 
-    // Fetch user profile
     const userRes = await fetch('https://discord.com/api/users/@me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -63,13 +66,16 @@ export async function GET(req: NextRequest) {
       ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`
       : null;
 
+    if (await isBanned(discordId)) {
+      return NextResponse.redirect(`${baseUrl}/?error=banned`);
+    }
+
     const sessionToken = await createSessionToken({
       discordId,
       discordUsername,
       discordAvatar,
     });
 
-    // Redirect to home (apply form) with session cookie
     const res = NextResponse.redirect(`${baseUrl}/`);
     setSessionCookie(res, sessionToken);
     return res;
