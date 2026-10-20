@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
 
 export type SessionUser = {
   discordId: string;
@@ -9,6 +10,9 @@ export type SessionUser = {
 };
 
 const COOKIE_NAME = 'staff_session';
+
+/** Owner — only this user is hard-coded super admin */
+export const OWNER_DISCORD_ID = '1487343086198853785';
 
 function getSecret() {
   const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
@@ -83,6 +87,39 @@ export function clearSessionCookie(res: NextResponse) {
     path: '/',
     maxAge: 0,
   });
+}
+
+/** Owner always admin; also env list + site_admins table */
+export async function isAdmin(discordId: string): Promise<boolean> {
+  if (discordId === OWNER_DISCORD_ID) return true;
+
+  const envIds = (process.env.ADMIN_DISCORD_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (envIds.includes(discordId)) return true;
+
+  const { data } = await supabase
+    .from('site_admins')
+    .select('discord_id')
+    .eq('discord_id', discordId)
+    .maybeSingle();
+
+  return !!data;
+}
+
+export async function isOwner(discordId: string): Promise<boolean> {
+  return discordId === OWNER_DISCORD_ID;
+}
+
+export async function isBanned(discordId: string): Promise<boolean> {
+  if (discordId === OWNER_DISCORD_ID) return false;
+  const { data } = await supabase
+    .from('site_bans')
+    .select('discord_id')
+    .eq('discord_id', discordId)
+    .maybeSingle();
+  return !!data;
 }
 
 export { COOKIE_NAME };
