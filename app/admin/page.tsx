@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { RolePanel } from './RolePanel';
+import { LockPanel } from './LockPanel';
 
 type Application = {
   id: string;
@@ -53,7 +54,7 @@ type GuildRole = {
   managed: boolean;
 };
 
-type Tab = 'applications' | 'members' | 'admins' | 'bans';
+type Tab = 'applications' | 'members' | 'admins' | 'bans' | 'lock';
 
 function roleColor(color: number) {
   if (!color) return '#99aab5';
@@ -333,6 +334,7 @@ export default function AdminPage() {
               { id: 'members' as Tab, label: 'Server Members' },
               { id: 'admins' as Tab, label: 'Site Admins' },
               { id: 'bans' as Tab, label: 'Site Bans' },
+              { id: 'lock' as Tab, label: 'Site Lock' },
             ] as const
           ).map((t) => (
             <button
@@ -354,11 +356,13 @@ export default function AdminPage() {
           <div className="mb-4 p-3 rounded-lg bg-discord-blurple/20 text-discord-blurple text-sm">{msg}</div>
         )}
 
+        {tab === 'lock' && <LockPanel />}
+
         {tab === 'members' && (
           <div className="space-y-4">
             <div className="bg-discord-card rounded-2xl p-4 border border-white/5">
               <p className="text-sm text-gray-400 mb-3">
-                Discord server members. Click user → Give Role (role Discord server pe lagta hai).
+                Discord server members. Click user → Give Role.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
@@ -377,204 +381,97 @@ export default function AdminPage() {
                 </button>
               </div>
             </div>
-
             {membersError && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-                {membersError}
-              </div>
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{membersError}</div>
             )}
-
-            {membersLoading && members.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">Loading Discord members...</p>
-            ) : (
-              <div className="grid lg:grid-cols-5 gap-4">
-                <div className="lg:col-span-2 space-y-2 max-h-[70vh] overflow-y-auto">
-                  <p className="text-xs text-gray-500 mb-2">{filteredMembers.length} members</p>
-                  {filteredMembers.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setSelectedMember(m)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl text-left border transition ${
-                        selectedMember?.id === m.id
-                          ? 'bg-discord-blurple/20 border-discord-blurple'
-                          : 'bg-discord-card border-white/5 hover:border-white/20'
-                      }`}
-                    >
-                      {m.avatar ? (
-                        <img src={m.avatar} alt="" className="w-10 h-10 rounded-full" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-discord-dark flex items-center justify-center text-gray-400 text-sm">
-                          {m.displayName.slice(0, 1).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-white text-sm font-medium truncate">{m.displayName}</p>
-                        <p className="text-xs text-gray-500 truncate">@{m.username}</p>
+            <div className="grid lg:grid-cols-5 gap-4">
+              <div className="lg:col-span-2 space-y-2 max-h-[70vh] overflow-y-auto">
+                <p className="text-xs text-gray-500 mb-2">{filteredMembers.length} members</p>
+                {filteredMembers.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setSelectedMember(m)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl text-left border ${
+                      selectedMember?.id === m.id
+                        ? 'bg-discord-blurple/20 border-discord-blurple'
+                        : 'bg-discord-card border-white/5'
+                    }`}
+                  >
+                    {m.avatar ? (
+                      <img src={m.avatar} alt="" className="w-10 h-10 rounded-full" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-discord-dark flex items-center justify-center text-sm text-gray-400">
+                        {m.displayName.slice(0, 1).toUpperCase()}
                       </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="lg:col-span-3">
-                  {selectedMember ? (
-                    <div className="bg-discord-card rounded-2xl p-5 border border-white/5 sticky top-24">
-                      <div className="flex items-center gap-4 mb-5">
-                        {selectedMember.avatar ? (
-                          <img src={selectedMember.avatar} alt="" className="w-16 h-16 rounded-full" />
-                        ) : (
-                          <div className="w-16 h-16 rounded-full bg-discord-dark flex items-center justify-center text-2xl text-gray-400">
-                            {selectedMember.displayName.slice(0, 1).toUpperCase()}
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-xl font-bold text-white">{selectedMember.displayName}</p>
-                          <p className="text-sm text-gray-400">@{selectedMember.username}</p>
-                          <p className="text-xs text-gray-500 font-mono mt-1">{selectedMember.id}</p>
-                        </div>
-                      </div>
-
-                      <p className="text-sm text-gray-400 mb-2">Current roles</p>
-                      <div className="flex flex-wrap gap-2 mb-5">
-                        {selectedMember.roles.length === 0 ? (
-                          <span className="text-xs text-gray-500">No roles (only @everyone)</span>
-                        ) : (
-                          selectedMember.roles.map((rid) => {
-                            const role = roles.find((r) => r.id === rid);
-                            return (
-                              <span
-                                key={rid}
-                                className="px-2.5 py-1 rounded-full text-xs border border-white/10"
-                                style={{ color: role ? roleColor(role.color) : '#99aab5' }}
-                              >
-                                {role?.name || rid}
-                              </span>
-                            );
-                          })
-                        )}
-                      </div>
-
-                      <p className="text-sm text-white font-medium mb-3">Assign / Remove Discord Role</p>
-                      {rolesError && (
-                        <div className="mb-3 p-2 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs">{rolesError}</div>
-                      )}
-                      {assignableRoles.length === 0 ? (
-                        <p className="text-sm text-gray-400 mb-3">
-                          Server me custom role nahi mili. Discord: <span className="text-white">Server Settings → Roles → Create</span> (Admin, Staff, Helper). Ya Role ID se do.
-                        </p>
-                      ) : (
-                        <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
-                          {assignableRoles.map((role) => {
-                            const has = selectedMember.roles.includes(role.id);
-                            return (
-                              <div
-                                key={role.id}
-                                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-discord-dark border border-white/5"
-                              >
-                                <div>
-                                  <span className="text-sm font-medium" style={{ color: roleColor(role.color) }}>
-                                    {role.name}
-                                  </span>
-                                  {role.managed && (
-                                    <span className="ml-2 text-[10px] text-gray-500">(managed)</span>
-                                  )}
-                                  <p className="text-[10px] text-gray-600 font-mono">{role.id}</p>
-                                </div>
-                                <button
-                                  onClick={() => toggleRole(selectedMember.id, role.id, has)}
-                                  disabled={role.managed || actionLoading === selectedMember.id + role.id}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40 ${
-                                    has ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-discord-green'
-                                  }`}
-                                >
-                                  {actionLoading === selectedMember.id + role.id
-                                    ? '...'
-                                    : has
-                                      ? 'Remove'
-                                      : 'Give Role'}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <div className="pt-3 border-t border-white/5 space-y-2">
-                        <p className="text-xs text-gray-500">
-                          Manual Role ID (Developer Mode ON → Roles list me role pe right-click → Copy Role ID)
-                        </p>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="Role ID"
-                            value={manualRoleId}
-                            onChange={(e) => setManualRoleId(e.target.value.trim())}
-                            className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
-                          />
-                          <button
-                            onClick={() =>
-                              manualRoleId && toggleRole(selectedMember.id, manualRoleId, false)
-                            }
-                            disabled={!manualRoleId || !!actionLoading}
-                            className="px-3 py-2 rounded-lg bg-green-500/20 text-discord-green text-xs font-medium disabled:opacity-50"
-                          >
-                            Give
-                          </button>
-                          <button
-                            onClick={() =>
-                              manualRoleId && toggleRole(selectedMember.id, manualRoleId, true)
-                            }
-                            disabled={!manualRoleId || !!actionLoading}
-                            className="px-3 py-2 rounded-lg bg-red-500/20 text-red-400 text-xs font-medium disabled:opacity-50"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{m.displayName}</p>
+                      <p className="text-xs text-gray-500 truncate">@{m.username}</p>
                     </div>
-                  ) : (
-                    <div className="bg-discord-card rounded-2xl p-10 border border-white/5 text-center text-gray-500">
-                      Left se member click karo → role assign.
-                    </div>
-                  )}
-                </div>
+                  </button>
+                ))}
               </div>
-            )}
+              <div className="lg:col-span-3">
+                {selectedMember ? (
+                  <div className="bg-discord-card rounded-2xl p-5 border border-white/5">
+                    <p className="text-xl font-bold text-white">{selectedMember.displayName}</p>
+                    <p className="text-xs text-gray-500 font-mono mb-4">{selectedMember.id}</p>
+                    <p className="text-sm text-white font-medium mb-3">Assign Role</p>
+                    {assignableRoles.length === 0 ? (
+                      <p className="text-sm text-gray-400 mb-3">No roles. Discord me roles banao ya Role ID use karo.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
+                        {assignableRoles.map((role) => {
+                          const has = selectedMember.roles.includes(role.id);
+                          return (
+                            <div key={role.id} className="flex items-center justify-between p-3 rounded-xl bg-discord-dark">
+                              <span className="text-sm" style={{ color: roleColor(role.color) }}>{role.name}</span>
+                              <button
+                                onClick={() => toggleRole(selectedMember.id, role.id, has)}
+                                disabled={role.managed || !!actionLoading}
+                                className={`px-3 py-1.5 rounded-lg text-xs ${
+                                  has ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-discord-green'
+                                }`}
+                              >
+                                {has ? 'Remove' : 'Give Role'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="pt-3 border-t border-white/5 flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Manual Role ID"
+                        value={manualRoleId}
+                        onChange={(e) => setManualRoleId(e.target.value.trim())}
+                        className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
+                      />
+                      <button
+                        onClick={() => manualRoleId && toggleRole(selectedMember.id, manualRoleId, false)}
+                        className="px-3 py-2 rounded-lg bg-green-500/20 text-discord-green text-xs"
+                      >
+                        Give
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-discord-card rounded-2xl p-10 text-center text-gray-500">Select a member</div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {tab === 'applications' && (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              {[
-                { label: 'Total', value: applications.length, color: 'text-white' },
-                {
-                  label: 'Pending',
-                  value: applications.filter((a) => a.status === 'pending').length,
-                  color: 'text-discord-yellow',
-                },
-                {
-                  label: 'Approved',
-                  value: applications.filter((a) => a.status === 'approved').length,
-                  color: 'text-discord-green',
-                },
-                {
-                  label: 'Rejected',
-                  value: applications.filter((a) => a.status === 'rejected').length,
-                  color: 'text-discord-red',
-                },
-              ].map((s) => (
-                <div key={s.label} className="bg-discord-card rounded-xl p-4 border border-white/5 text-center">
-                  <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                  <p className="text-xs text-gray-500 mt-1">{s.label}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 mb-6 flex-wrap">
+          <div className="space-y-4">
+            <div className="flex gap-2 mb-4 flex-wrap">
               {(['all', 'pending', 'approved', 'rejected'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize ${
+                  className={`px-4 py-1.5 rounded-lg text-sm capitalize ${
                     filter === f ? 'bg-discord-blurple text-white' : 'bg-discord-card text-gray-400'
                   }`}
                 >
@@ -582,83 +479,49 @@ export default function AdminPage() {
                 </button>
               ))}
             </div>
-            <div className="space-y-4">
-              {filtered.length === 0 ? (
-                <p className="text-center text-gray-500 py-12">No applications found.</p>
-              ) : (
-                filtered.map((app) => (
-                  <div key={app.id} className="bg-discord-card rounded-2xl p-5 border border-white/5">
-                    <div className="flex items-start justify-between gap-4 mb-4">
-                      <div>
-                        <p className="font-semibold text-white">{app.discord_username}</p>
-                        <p className="text-xs text-gray-500 font-mono">{app.discord_id}</p>
-                      </div>
-                      <span className="px-2.5 py-1 rounded-full text-xs bg-discord-blurple/20 text-discord-blurple">
-                        {app.position}
-                      </span>
-                    </div>
-                    {app.status === 'pending' && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => updateStatus(app.id, 'approved')}
-                          className="px-4 py-2 rounded-lg bg-green-500/20 text-discord-green text-sm"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => updateStatus(app.id, 'rejected')}
-                          className="px-4 py-2 rounded-lg bg-red-500/20 text-discord-red text-sm"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    )}
+            {filtered.map((app) => (
+              <div key={app.id} className="bg-discord-card rounded-2xl p-5 border border-white/5">
+                <p className="font-semibold text-white">{app.discord_username}</p>
+                <p className="text-xs text-gray-500 font-mono mb-2">{app.discord_id}</p>
+                <p className="text-sm text-gray-300 mb-2">{app.position} — {app.status}</p>
+                {app.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <button onClick={() => updateStatus(app.id, 'approved')} className="px-4 py-2 rounded-lg bg-green-500/20 text-discord-green text-sm">Approve</button>
+                    <button onClick={() => updateStatus(app.id, 'rejected')} className="px-4 py-2 rounded-lg bg-red-500/20 text-discord-red text-sm">Reject</button>
                   </div>
-                ))
-              )}
-            </div>
-          </>
+                )}
+              </div>
+            ))}
+          </div>
         )}
 
         {tab === 'admins' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {isOwner && (
-              <div className="bg-discord-card rounded-2xl p-5 border border-white/5">
-                <h3 className="text-white font-semibold mb-3">Add Site Admin</h3>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="text"
-                    placeholder="Discord User ID"
-                    value={newAdminId}
-                    onChange={(e) => setNewAdminId(e.target.value.trim())}
-                    className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
-                  />
-                  <button
-                    onClick={() => manageUser('add_admin', newAdminId, newAdminName)}
-                    disabled={!newAdminId}
-                    className="px-4 py-2 rounded-lg bg-discord-blurple text-white text-sm disabled:opacity-50"
-                  >
-                    Add Admin
-                  </button>
-                </div>
+              <div className="bg-discord-card rounded-2xl p-5 border border-white/5 flex gap-3">
+                <input
+                  type="text"
+                  placeholder="Discord User ID"
+                  value={newAdminId}
+                  onChange={(e) => setNewAdminId(e.target.value.trim())}
+                  className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
+                />
+                <button
+                  onClick={() => manageUser('add_admin', newAdminId, newAdminName)}
+                  className="px-4 py-2 rounded-lg bg-discord-blurple text-white text-sm"
+                >
+                  Add Admin
+                </button>
               </div>
             )}
             {admins.map((a) => (
-              <div
-                key={a.discord_id}
-                className="bg-discord-card rounded-xl p-4 border border-white/5 flex justify-between"
-              >
+              <div key={a.discord_id} className="bg-discord-card rounded-xl p-4 flex justify-between">
                 <div>
                   <p className="text-white">{a.discord_username || 'Unknown'}</p>
                   <p className="text-xs text-gray-500 font-mono">{a.discord_id}</p>
                 </div>
                 {isOwner && a.discord_id !== ownerId && (
-                  <button
-                    onClick={() => manageUser('remove_admin', a.discord_id)}
-                    className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-sm"
-                  >
-                    Remove
-                  </button>
+                  <button onClick={() => manageUser('remove_admin', a.discord_id)} className="text-red-400 text-sm">Remove</button>
                 )}
               </div>
             ))}
@@ -666,41 +529,24 @@ export default function AdminPage() {
         )}
 
         {tab === 'bans' && (
-          <div className="space-y-6">
-            <div className="bg-discord-card rounded-2xl p-5 border border-white/5">
-              <h3 className="text-white font-semibold mb-3">Ban from Website</h3>
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  placeholder="Discord User ID"
-                  value={banId}
-                  onChange={(e) => setBanId(e.target.value.trim())}
-                  className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
-                />
-                <button
-                  onClick={() => manageUser('ban', banId, banName, banReason)}
-                  disabled={!banId}
-                  className="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 text-sm disabled:opacity-50"
-                >
-                  Ban
-                </button>
-              </div>
+          <div className="space-y-4">
+            <div className="bg-discord-card rounded-2xl p-5 border border-white/5 flex gap-3">
+              <input
+                type="text"
+                placeholder="Discord User ID"
+                value={banId}
+                onChange={(e) => setBanId(e.target.value.trim())}
+                className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono"
+              />
+              <button onClick={() => manageUser('ban', banId, banName, banReason)} className="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 text-sm">Ban</button>
             </div>
             {bans.map((b) => (
-              <div
-                key={b.discord_id}
-                className="bg-discord-card rounded-xl p-4 border border-white/5 flex justify-between"
-              >
+              <div key={b.discord_id} className="bg-discord-card rounded-xl p-4 flex justify-between">
                 <div>
                   <p className="text-white">{b.discord_username || 'Unknown'}</p>
                   <p className="text-xs text-gray-500 font-mono">{b.discord_id}</p>
                 </div>
-                <button
-                  onClick={() => manageUser('unban', b.discord_id)}
-                  className="px-3 py-1.5 rounded-lg bg-green-500/20 text-discord-green text-sm"
-                >
-                  Unban
-                </button>
+                <button onClick={() => manageUser('unban', b.discord_id)} className="text-discord-green text-sm">Unban</button>
               </div>
             ))}
           </div>
