@@ -1,6 +1,5 @@
 'use client';
 
-import { useSession, signIn } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
@@ -21,7 +20,7 @@ type Application = {
 };
 
 export default function AdminPage() {
-  const { data: session, status } = useSession();
+  const [loggedIn, setLoggedIn] = useState(false);
   const [applications, setApplications] = useState<Application[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -30,8 +29,18 @@ export default function AdminPage() {
   const [note, setNote] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (session) fetchApps();
-  }, [session]);
+    fetch('/api/auth/session')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.user) {
+          setLoggedIn(true);
+          fetchApps();
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch(() => setLoading(false));
+  }, []);
 
   async function fetchApps() {
     setLoading(true);
@@ -73,15 +82,21 @@ export default function AdminPage() {
 
   const filtered = applications.filter((a) => filter === 'all' || a.status === filter);
 
-  if (status === 'loading' || loading) {
-    return <div className="min-h-screen bg-discord-darker flex items-center justify-center text-gray-400">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-discord-darker flex items-center justify-center text-gray-400">
+        Loading...
+      </div>
+    );
   }
 
-  if (!session) {
+  if (!loggedIn) {
     return (
       <div className="min-h-screen bg-discord-darker flex flex-col items-center justify-center gap-4">
         <p className="text-gray-400">Please login first</p>
-        <button onClick={() => signIn('discord')} className="px-6 py-2 rounded-lg bg-discord-blurple text-white">Login with Discord</button>
+        <a href="/api/auth/discord" className="px-6 py-2 rounded-lg bg-discord-blurple text-white">
+          Login with Discord
+        </a>
       </div>
     );
   }
@@ -91,7 +106,9 @@ export default function AdminPage() {
       <div className="min-h-screen bg-discord-darker flex flex-col items-center justify-center gap-4">
         <p className="text-xl text-white font-bold">Access Denied</p>
         <p className="text-gray-400">You are not an admin.</p>
-        <Link href="/" className="text-discord-blurple hover:underline">Go back</Link>
+        <Link href="/" className="text-discord-blurple hover:underline">
+          Go back
+        </Link>
       </div>
     );
   }
@@ -101,10 +118,17 @@ export default function AdminPage() {
       <header className="border-b border-discord-card bg-discord-dark/80 sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-white">← Back</Link>
+            <Link href="/" className="text-gray-400 hover:text-white">
+              ← Back
+            </Link>
             <h1 className="text-xl font-bold text-white">Admin Panel</h1>
           </div>
-          <button onClick={fetchApps} className="px-3 py-2 rounded-lg bg-discord-card text-sm text-gray-300">Refresh</button>
+          <button
+            onClick={fetchApps}
+            className="px-3 py-2 rounded-lg bg-discord-card text-sm text-gray-300"
+          >
+            Refresh
+          </button>
         </div>
       </header>
 
@@ -112,11 +136,26 @@ export default function AdminPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
             { label: 'Total', value: applications.length, color: 'text-white' },
-            { label: 'Pending', value: applications.filter((a) => a.status === 'pending').length, color: 'text-discord-yellow' },
-            { label: 'Approved', value: applications.filter((a) => a.status === 'approved').length, color: 'text-discord-green' },
-            { label: 'Rejected', value: applications.filter((a) => a.status === 'rejected').length, color: 'text-discord-red' },
+            {
+              label: 'Pending',
+              value: applications.filter((a) => a.status === 'pending').length,
+              color: 'text-discord-yellow',
+            },
+            {
+              label: 'Approved',
+              value: applications.filter((a) => a.status === 'approved').length,
+              color: 'text-discord-green',
+            },
+            {
+              label: 'Rejected',
+              value: applications.filter((a) => a.status === 'rejected').length,
+              color: 'text-discord-red',
+            },
           ].map((s) => (
-            <div key={s.label} className="bg-discord-card rounded-xl p-4 border border-white/5 text-center">
+            <div
+              key={s.label}
+              className="bg-discord-card rounded-xl p-4 border border-white/5 text-center"
+            >
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
               <p className="text-xs text-gray-500 mt-1">{s.label}</p>
             </div>
@@ -125,7 +164,13 @@ export default function AdminPage() {
 
         <div className="flex gap-2 mb-6 flex-wrap">
           {(['all', 'pending', 'approved', 'rejected'] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize ${filter === f ? 'bg-discord-blurple text-white' : 'bg-discord-card text-gray-400'}`}>
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize ${
+                filter === f ? 'bg-discord-blurple text-white' : 'bg-discord-card text-gray-400'
+              }`}
+            >
               {f}
             </button>
           ))}
@@ -143,8 +188,20 @@ export default function AdminPage() {
                     <p className="text-xs text-gray-500 font-mono">{app.discord_id}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-full text-xs bg-discord-blurple/20 text-discord-blurple">{app.position}</span>
-                    <span className={`px-2.5 py-1 rounded-full text-xs capitalize ${app.status === 'approved' ? 'text-discord-green' : app.status === 'rejected' ? 'text-discord-red' : 'text-discord-yellow'}`}>{app.status}</span>
+                    <span className="px-2.5 py-1 rounded-full text-xs bg-discord-blurple/20 text-discord-blurple">
+                      {app.position}
+                    </span>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs capitalize ${
+                        app.status === 'approved'
+                          ? 'text-discord-green'
+                          : app.status === 'rejected'
+                            ? 'text-discord-red'
+                            : 'text-discord-yellow'
+                      }`}
+                    >
+                      {app.status}
+                    </span>
                   </div>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4 text-sm mb-4">
@@ -157,13 +214,33 @@ export default function AdminPage() {
                     <p className="text-gray-300 whitespace-pre-wrap">{app.why_join}</p>
                   </div>
                 </div>
-                <p className="text-xs text-gray-600 mb-3">Applied: {new Date(app.created_at).toLocaleString('en-IN')}</p>
+                <p className="text-xs text-gray-600 mb-3">
+                  Applied: {new Date(app.created_at).toLocaleString('en-IN')}
+                </p>
                 {app.status === 'pending' && (
                   <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-white/5">
-                    <input type="text" placeholder="Admin note (optional)" value={note[app.id] || ''} onChange={(e) => setNote({ ...note, [app.id]: e.target.value })} className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
+                    <input
+                      type="text"
+                      placeholder="Admin note (optional)"
+                      value={note[app.id] || ''}
+                      onChange={(e) => setNote({ ...note, [app.id]: e.target.value })}
+                      className="flex-1 bg-discord-dark border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                    />
                     <div className="flex gap-2">
-                      <button onClick={() => updateStatus(app.id, 'approved')} disabled={actionLoading === app.id} className="px-4 py-2 rounded-lg bg-green-500/20 text-discord-green text-sm font-medium disabled:opacity-50">Approve</button>
-                      <button onClick={() => updateStatus(app.id, 'rejected')} disabled={actionLoading === app.id} className="px-4 py-2 rounded-lg bg-red-500/20 text-discord-red text-sm font-medium disabled:opacity-50">Reject</button>
+                      <button
+                        onClick={() => updateStatus(app.id, 'approved')}
+                        disabled={actionLoading === app.id}
+                        className="px-4 py-2 rounded-lg bg-green-500/20 text-discord-green text-sm font-medium disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => updateStatus(app.id, 'rejected')}
+                        disabled={actionLoading === app.id}
+                        className="px-4 py-2 rounded-lg bg-red-500/20 text-discord-red text-sm font-medium disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
                     </div>
                   </div>
                 )}
