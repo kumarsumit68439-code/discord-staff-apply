@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, isAdmin } from '@/lib/auth';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function getYoutubeKey(): string {
+  return (
+    process.env.YOUTUBE_API_KEY ||
+    process.env.YT_API_KEY ||
+    process.env.GOOGLE_YOUTUBE_API_KEY ||
+    ''
+  ).trim();
+}
+
 export async function GET(req: NextRequest) {
   const user = await getSessionFromRequest(req);
   if (!user || !(await isAdmin(user.discordId))) {
@@ -12,12 +24,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'q required' }, { status: 400 });
   }
 
-  const key = process.env.YOUTUBE_API_KEY?.trim();
+  const key = getYoutubeKey();
   if (!key) {
+    // Debug: which env names exist (not values)
+    const has = {
+      YOUTUBE_API_KEY: !!process.env.YOUTUBE_API_KEY,
+      YT_API_KEY: !!process.env.YT_API_KEY,
+      GOOGLE_YOUTUBE_API_KEY: !!process.env.GOOGLE_YOUTUBE_API_KEY,
+    };
     return NextResponse.json(
       {
         error:
-          'YOUTUBE_API_KEY not set. Vercel → Environment Variables me add karo, phir Redeploy.',
+          'YOUTUBE_API_KEY runtime me nahi mili. Vercel → Settings → Environment Variables → key name exactly YOUTUBE_API_KEY, Environment = Production, phir Deployments → Redeploy (Use existing Build Cache = OFF).',
+        envCheck: has,
       },
       { status: 500 }
     );
@@ -30,7 +49,7 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('q', q);
   url.searchParams.set('key', key);
 
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { cache: 'no-store' });
   const data = await res.json();
 
   if (!res.ok) {
