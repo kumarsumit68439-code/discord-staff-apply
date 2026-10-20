@@ -1,1 +1,1 @@
-Redeploy triggered for Discord bot env vars.
+Redeploy for YOUTUBE_API_KEY env (2026-10-20).
