@@ -51,7 +51,7 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
 }
 
 export async function getSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies();
+  const cookieStore = cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   return verifySessionToken(token);
@@ -64,9 +64,10 @@ export async function getSessionFromRequest(req: NextRequest): Promise<SessionUs
 }
 
 export function setSessionCookie(res: NextResponse, token: string) {
+  const isSecure = getBaseUrl().startsWith('https://');
   res.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     path: '/',
     maxAge: 30 * 24 * 60 * 60,
@@ -74,9 +75,10 @@ export function setSessionCookie(res: NextResponse, token: string) {
 }
 
 export function clearSessionCookie(res: NextResponse) {
+  const isSecure = getBaseUrl().startsWith('https://');
   res.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     path: '/',
     maxAge: 0,
