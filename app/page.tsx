@@ -59,6 +59,11 @@ function HomeContent() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [siteLocked, setSiteLocked] = useState(false);
+  const [needsUnlock, setNeedsUnlock] = useState(false);
+  const [lockPassword, setLockPassword] = useState('');
+  const [lockError, setLockError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
   const [form, setForm] = useState({
     position: 'Moderator',
     experience: '',
@@ -69,18 +74,46 @@ function HomeContent() {
   });
 
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then((r) => r.json())
-      .then((data) => {
-        setUser(data.user || null);
+    Promise.all([
+      fetch('/api/auth/session').then((r) => r.json()),
+      fetch('/api/site-lock').then((r) => r.json()),
+    ])
+      .then(([session, lock]) => {
+        setUser(session.user || null);
+        setSiteLocked(!!lock.locked);
+        setNeedsUnlock(!!lock.needsUnlock);
         setStatus('ready');
       })
       .catch(() => setStatus('ready'));
   }, []);
 
+  async function handleUnlock(e: React.FormEvent) {
+    e.preventDefault();
+    setUnlocking(true);
+    setLockError(null);
+    try {
+      const res = await fetch('/api/site-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unlock', password: lockPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLockError(data.error || 'Wrong password');
+      } else {
+        setNeedsUnlock(false);
+        setLockPassword('');
+      }
+    } catch {
+      setLockError('Network error');
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
   useEffect(() => {
-    if (user) fetchApplications();
-  }, [user]);
+    if (user && !needsUnlock) fetchApplications();
+  }, [user, needsUnlock]);
 
   async function fetchApplications() {
     setLoading(true);
@@ -146,19 +179,18 @@ function HomeContent() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white tracking-tight">Staff Applications</h1>
-              <p className="text-[11px] text-gray-500">Premium staff portal</p>
+              <p className="text-[11px] text-gray-500">
+                {siteLocked ? '🔒 Locked' : 'Premium staff portal'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {isAdmin && (
-              <Link
-                href="/admin"
-                className="px-4 py-2 rounded-xl btn-premium text-white text-sm font-medium"
-              >
+              <Link href="/admin" className="px-4 py-2 rounded-xl btn-premium text-white text-sm font-medium">
                 Admin Panel
               </Link>
             )}
-            {user ? (
+            {user && !needsUnlock ? (
               <div className="flex items-center gap-3 pl-2">
                 <div className="avatar-ring w-10 h-10">
                   <div className="avatar-ring-inner w-full h-full relative">
@@ -183,11 +215,11 @@ function HomeContent() {
                   Logout
                 </button>
               </div>
-            ) : (
+            ) : !needsUnlock ? (
               <button onClick={handleLogin} className="px-5 py-2.5 rounded-xl btn-premium text-white font-medium text-sm">
                 Login with Discord
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
@@ -199,36 +231,63 @@ function HomeContent() {
       <main className="max-w-5xl mx-auto px-4 py-10">
         {status === 'loading' ? (
           <div className="text-center py-24 text-gray-500 animate-pulse">Loading session...</div>
+        ) : needsUnlock ? (
+          <div className="max-w-md mx-auto py-16 animate-in">
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-discord-blurple/20 flex items-center justify-center">
+                <svg className="w-8 h-8 text-discord-blurple" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Website Locked</h2>
+              <p className="text-sm text-gray-400 mb-6">
+                Admin ne website lock ki hai. Entry ke liye password daalo.
+              </p>
+              {lockError && (
+                <div className="mb-4 p-3 rounded-xl bg-red-500/10 text-red-400 text-sm">{lockError}</div>
+              )}
+              <form onSubmit={handleUnlock} className="space-y-4">
+                <input
+                  type="password"
+                  value={lockPassword}
+                  onChange={(e) => setLockPassword(e.target.value)}
+                  placeholder="Entry password"
+                  className="w-full input-premium rounded-xl px-4 py-3 text-white text-center tracking-widest"
+                  autoFocus
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={unlocking}
+                  className="w-full py-3 rounded-xl btn-premium text-white font-semibold disabled:opacity-50"
+                >
+                  {unlocking ? 'Checking...' : 'Enter Website'}
+                </button>
+              </form>
+              <p className="mt-6 text-xs text-gray-500">
+                Admin ho?{' '}
+                <button type="button" onClick={handleLogin} className="text-discord-blurple hover:underline">
+                  Discord se login
+                </button>{' '}
+                karke bypass.
+              </p>
+            </div>
+          </div>
         ) : !user ? (
           <div className="text-center py-20 animate-in">
-            <div className="inline-flex mb-8">
-              <div className="avatar-ring w-24 h-24 shadow-glow">
-                <div className="avatar-ring-inner w-full h-full flex items-center justify-center bg-discord-dark">
-                  <svg className="w-12 h-12 text-discord-blurple" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
             <h2 className="text-4xl font-bold text-white mb-3 tracking-tight">
               Become a{' '}
               <span className="bg-gradient-to-r from-discord-blurple via-discord-fuchsia to-discord-green bg-clip-text text-transparent">
                 Staff Member
               </span>
             </h2>
-            <p className="text-gray-400 max-w-md mx-auto mb-10 text-base leading-relaxed">
-              Login with Discord to apply for staff positions on our server.
-            </p>
-            <button
-              onClick={handleLogin}
-              className="px-10 py-4 rounded-2xl btn-premium text-white font-semibold text-lg"
-            >
+            <p className="text-gray-400 max-w-md mx-auto mb-10">Login with Discord to apply.</p>
+            <button onClick={handleLogin} className="px-10 py-4 rounded-2xl btn-premium text-white font-semibold text-lg">
               Login with Discord
             </button>
           </div>
         ) : (
           <div className="grid gap-8 lg:grid-cols-5">
-            {/* Profile card */}
             <div className="lg:col-span-2 animate-in">
               <div className="glass-card rounded-2xl overflow-hidden">
                 <div className="profile-banner" />
@@ -256,18 +315,11 @@ function HomeContent() {
                         Admin
                       </span>
                     )}
-                    <span className="px-2.5 py-1 rounded-full text-[11px] bg-discord-online/20 text-discord-online border border-discord-online/30">
-                      Online
-                    </span>
                   </div>
                 </div>
               </div>
-
-              <div className="glass-card rounded-2xl p-5 mt-5 animate-in-delay-1">
-                <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-discord-blurple" />
-                  My Applications
-                </h3>
+              <div className="glass-card rounded-2xl p-5 mt-5">
+                <h3 className="text-sm font-semibold text-white mb-4">My Applications</h3>
                 {loading ? (
                   <p className="text-gray-500 text-sm">Loading...</p>
                 ) : applications.length === 0 ? (
@@ -275,50 +327,30 @@ function HomeContent() {
                 ) : (
                   <div className="space-y-3">
                     {applications.map((app) => (
-                      <div
-                        key={app.id}
-                        className="p-3 rounded-xl bg-black/30 border border-white/5 hover:border-discord-blurple/30 transition"
-                      >
+                      <div key={app.id} className="p-3 rounded-xl bg-black/30 border border-white/5">
                         <div className="flex justify-between mb-1">
                           <span className="font-medium text-white text-sm">{app.position}</span>
-                          <span
-                            className={`text-xs capitalize font-medium ${
-                              app.status === 'approved'
-                                ? 'text-discord-green'
-                                : app.status === 'rejected'
-                                  ? 'text-discord-red'
-                                  : 'text-discord-yellow'
-                            }`}
-                          >
-                            {app.status}
-                          </span>
+                          <span className="text-xs capitalize text-discord-yellow">{app.status}</span>
                         </div>
                         <p className="text-[11px] text-gray-500">
                           {new Date(app.created_at).toLocaleDateString('en-IN')}
                         </p>
-                        {app.admin_note && (
-                          <p className="mt-2 text-xs text-gray-400">Note: {app.admin_note}</p>
-                        )}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Form */}
-            <div className="lg:col-span-3 animate-in-delay-1">
+            <div className="lg:col-span-3 animate-in">
               <div className="glass-card rounded-2xl p-6 sm:p-8">
                 <h2 className="text-2xl font-bold text-white mb-1">Apply for Staff</h2>
-                <p className="text-sm text-gray-400 mb-6">
-                  Fill carefully — Discord profile is linked automatically.
-                </p>
+                <p className="text-sm text-gray-400 mb-6">Fill carefully — Discord profile linked.</p>
                 {message && (
                   <div
                     className={`mb-5 p-3 rounded-xl text-sm ${
                       message.type === 'success'
-                        ? 'bg-discord-green/10 text-discord-green border border-discord-green/20'
-                        : 'bg-discord-red/10 text-discord-red border border-discord-red/20'
+                        ? 'bg-discord-green/10 text-discord-green'
+                        : 'bg-discord-red/10 text-discord-red'
                     }`}
                   >
                     {message.text}
@@ -327,115 +359,45 @@ function HomeContent() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                        Discord Username
-                      </label>
-                      <input
-                        type="text"
-                        value={user.discordUsername}
-                        readOnly
-                        className="w-full input-premium rounded-xl px-3 py-2.5 text-gray-300 cursor-not-allowed"
-                      />
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Discord Username</label>
+                      <input type="text" value={user.discordUsername} readOnly className="w-full input-premium rounded-xl px-3 py-2.5 text-gray-300 cursor-not-allowed" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                        Discord User ID
-                      </label>
-                      <input
-                        type="text"
-                        value={user.discordId}
-                        readOnly
-                        className="w-full input-premium rounded-xl px-3 py-2.5 text-gray-300 font-mono text-sm cursor-not-allowed"
-                      />
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Discord User ID</label>
+                      <input type="text" value={user.discordId} readOnly className="w-full input-premium rounded-xl px-3 py-2.5 text-gray-300 font-mono text-sm cursor-not-allowed" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                      Position *
-                    </label>
-                    <select
-                      value={form.position}
-                      onChange={(e) => setForm({ ...form, position: e.target.value })}
-                      className="w-full input-premium rounded-xl px-3 py-2.5 text-white"
-                      required
-                    >
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Position *</label>
+                    <select value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} className="w-full input-premium rounded-xl px-3 py-2.5 text-white" required>
                       {POSITIONS.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
+                        <option key={p} value={p}>{p}</option>
                       ))}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                        Age
-                      </label>
-                      <input
-                        type="number"
-                        min={13}
-                        max={99}
-                        value={form.age}
-                        onChange={(e) => setForm({ ...form, age: e.target.value })}
-                        className="w-full input-premium rounded-xl px-3 py-2.5 text-white"
-                        placeholder="18"
-                      />
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Age</label>
+                      <input type="number" min={13} max={99} value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} className="w-full input-premium rounded-xl px-3 py-2.5 text-white" placeholder="18" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                        Timezone
-                      </label>
-                      <input
-                        type="text"
-                        value={form.timezone}
-                        onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-                        className="w-full input-premium rounded-xl px-3 py-2.5 text-white"
-                        placeholder="IST"
-                      />
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Timezone</label>
+                      <input type="text" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className="w-full input-premium rounded-xl px-3 py-2.5 text-white" placeholder="IST" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                      Experience *
-                    </label>
-                    <textarea
-                      value={form.experience}
-                      onChange={(e) => setForm({ ...form, experience: e.target.value })}
-                      rows={3}
-                      required
-                      className="w-full input-premium rounded-xl px-3 py-2.5 text-white resize-none"
-                      placeholder="Your moderation experience..."
-                    />
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Experience *</label>
+                    <textarea value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} rows={3} required className="w-full input-premium rounded-xl px-3 py-2.5 text-white resize-none" placeholder="Your experience..." />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                      Why join our staff? *
-                    </label>
-                    <textarea
-                      value={form.why_join}
-                      onChange={(e) => setForm({ ...form, why_join: e.target.value })}
-                      rows={4}
-                      required
-                      className="w-full input-premium rounded-xl px-3 py-2.5 text-white resize-none"
-                      placeholder="Why this server?"
-                    />
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Why join? *</label>
+                    <textarea value={form.why_join} onChange={(e) => setForm({ ...form, why_join: e.target.value })} rows={4} required className="w-full input-premium rounded-xl px-3 py-2.5 text-white resize-none" placeholder="Why this server?" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-                      Anything else?
-                    </label>
-                    <textarea
-                      value={form.extra}
-                      onChange={(e) => setForm({ ...form, extra: e.target.value })}
-                      rows={2}
-                      className="w-full input-premium rounded-xl px-3 py-2.5 text-white resize-none"
-                    />
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase">Anything else?</label>
+                    <textarea value={form.extra} onChange={(e) => setForm({ ...form, extra: e.target.value })} rows={2} className="w-full input-premium rounded-xl px-3 py-2.5 text-white resize-none" />
                   </div>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full py-3.5 rounded-xl btn-premium text-white font-semibold disabled:opacity-50"
-                  >
+                  <button type="submit" disabled={submitting} className="w-full py-3.5 rounded-xl btn-premium text-white font-semibold disabled:opacity-50">
                     {submitting ? 'Submitting...' : 'Submit Application'}
                   </button>
                 </form>
@@ -450,13 +412,7 @@ function HomeContent() {
 
 export default function HomePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="premium-bg min-h-screen text-gray-500 flex items-center justify-center">
-          Loading...
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="premium-bg min-h-screen text-gray-500 flex items-center justify-center">Loading...</div>}>
       <HomeContent />
     </Suspense>
   );
